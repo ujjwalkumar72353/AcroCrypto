@@ -38,7 +38,7 @@ const Header = () => {
                     className={classes.title}
                     variant = 'h6'
                     >
-                        Cryptoverse</Typography>
+                       AcroCrypto</Typography>
                         
                     <Select variant='outlined' style={{
                         width: 100,

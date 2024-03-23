@@ -42,7 +42,7 @@ function Banner() {
               color:"skyblue"
             }}
           >
-            Cryptoverse
+            AcroCrypto
           </Typography>
           <Typography
             variant="subtitle2"
