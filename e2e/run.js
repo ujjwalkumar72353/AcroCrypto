@@ -1,21 +1,17 @@
 // End-to-end check of the production build in real Chrome, against a fake market API.
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import http from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { MongoMemoryServer } from "mongodb-memory-server";
 import { chromium } from "playwright";
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
-const PORT = 3299;
+const PORT = 4299;
 const BASE = `http://localhost:${PORT}`;
 const PIXEL = "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==";
 const RATE = { usd: 1, inr: 84 };
 
 let failing = false;
-let bitcoinUsd = 1000;
-const emails = [];
 
 const coin = (index, currency) => {
   const usd = 1000 - index * 10;
@@ -71,9 +67,6 @@ const detail = {
 
 const route = (url) => {
   const { pathname } = url;
-  if (pathname.endsWith("/simple/price")) {
-    return { "coin-0": { usd: bitcoinUsd, inr: bitcoinUsd * 84 } };
-  }
   if (pathname.endsWith("/coins/markets")) return markets(url);
   if (pathname.endsWith("/global")) {
     return {
@@ -103,15 +96,6 @@ const route = (url) => {
   return null;
 };
 
-const poll = async (page, url, isDone) => {
-  for (let attempt = 0; attempt < 40; attempt += 1) {
-    const data = await page.evaluate(async (path) => (await fetch(path)).json(), url);
-    if (isDone(data)) return;
-    await page.waitForTimeout(250);
-  }
-  throw new Error(`Timed out waiting for ${url}`);
-};
-
 const steps = [];
 const step = async (name, fn) => {
   await fn();
@@ -120,48 +104,14 @@ const step = async (name, fn) => {
 };
 
 const run = async () => {
-  const mock = http.createServer((req, res) => {
-    const url = new URL(req.url, "http://mock");
-    if (url.pathname === "/emails") {
-      let raw = "";
-      req.on("data", (chunk) => (raw += chunk));
-      req.on("end", () => {
-        emails.push(JSON.parse(raw));
-        res.end("{}");
-      });
-      return;
-    }
-    const body = failing ? null : route(url);
-    res.setHeader("Content-Type", "application/json");
-    res.statusCode = failing ? 429 : body ? 200 : 404;
-    res.end(JSON.stringify(body || {}));
-  });
-  await new Promise((resolve) => mock.listen(0, resolve));
-  const upstream = `http://127.0.0.1:${mock.address().port}`;
-  const mongo = await MongoMemoryServer.create();
-  const server = spawn("node", ["server/index.js"], {
+  const server = spawn("npx", ["vite", "preview", "--port", String(PORT), "--strictPort"], {
     cwd: root,
-    env: {
-      ...process.env,
-      NODE_ENV: "production",
-      PORT: String(PORT),
-      COINGECKO_BASE: upstream,
-      FEAR_GREED_BASE: upstream,
-      API_RATE_LIMIT: "100000",
-      AUTH_RATE_LIMIT: "1000",
-      MONGO: mongo.getUri("e2e"),
-      JWT_SECRET: "e2e-secret",
-      ALERT_CHECK_MS: "1000",
-      RESEND_API_KEY: "test-email-key",
-      RESEND_BASE: upstream,
-      EMAIL_FROM: "AcroCrypto <alerts@test.com>",
-      APP_URL: BASE,
-    },
-    stdio: ["ignore", "ignore", "ignore"],
+    detached: true,
+    stdio: "ignore",
   });
   for (let i = 0; i < 100; i += 1) {
     try {
-      if ((await fetch(`${BASE}/api/health`)).ok) break;
+      if ((await fetch(BASE)).ok) break;
     } catch {}
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
@@ -171,9 +121,21 @@ const run = async () => {
   const page = await (await browser.newContext({ viewport: { width: 1360, height: 900 } })).newPage();
   page.on("pageerror", (error) => errors.push(error.message));
   page.on("console", (entry) => {
-    const expected = /status of (40|50)[0-9]|WebSocket/.test(entry.text());
+    const expected = /status of (40|42|50)[0-9]|WebSocket/.test(entry.text());
     if (entry.type() === "error" && !expected) errors.push(entry.text());
   });
+  const fakeApi = async (handle) => {
+    const url = new URL(handle.request().url());
+    const body = failing ? null : route(url);
+    await handle.fulfill({
+      status: failing ? 429 : body ? 200 : 404,
+      contentType: "application/json",
+      headers: { "access-control-allow-origin": "*" },
+      body: JSON.stringify(body || {}),
+    });
+  };
+  await page.route("https://api.coingecko.com/**", fakeApi);
+  await page.route("https://api.alternative.me/**", fakeApi);
   const row = (name) => page.getByRole("row", { name: new RegExp(`^.*${name}\\b`) }).first();
 
   try {
@@ -267,77 +229,28 @@ const run = async () => {
       await page.getByLabel("Currency").selectOption("usd");
     });
 
-    await step("guest data moves into a new account", async () => {
+    await step("no login, alerts or backend remain", async () => {
       await page.goto(BASE);
-      await page.getByRole("button", { name: "Add Bitcoin to watchlist" }).click();
-      await page.getByRole("link", { name: "Portfolio" }).click();
-      await page.getByLabel("Find a coin to add").fill("bit");
-      await page.getByRole("list").getByRole("button", { name: /Bitcoin/ }).click();
-      await page.getByLabel("Quantity").fill("1");
-      await page.getByLabel(/Buy price/).fill("500");
-      await page.getByRole("button", { name: "Add holding" }).click();
-      await page.getByRole("cell", { name: "$500.00" }).first().waitFor();
-      await page.getByRole("link", { name: "Sign in" }).click();
-      await page.getByRole("link", { name: "Create an account" }).click();
-      await page.getByLabel("Name").fill("Arjun");
-      await page.getByLabel("Email").fill("arjun@e2e.com");
-      await page.getByLabel("Password").fill("password123");
-      await page.getByRole("button", { name: "Create account" }).click();
-      await page.getByRole("button", { name: "Sign out Arjun" }).waitFor();
-      await page.getByRole("link", { name: "Portfolio" }).click();
-      await page.getByText("Saved to your account.").waitFor();
-      await page.getByRole("cell", { name: "$500.00" }).first().waitFor();
-      assert.equal(await page.evaluate(() => localStorage.getItem("acro.portfolio")), "[]");
-    });
-
-    await step("price alert triggers, notifies and sends an email", async () => {
-      await page.goto(`${BASE}/coin/coin-0`);
-      await page.getByLabel("Target price (USD)").fill("1500");
-      await page.getByRole("button", { name: "Set alert" }).click();
-      await page.getByRole("alert").getByText("already below").waitFor();
-      await page.getByLabel("Target price (USD)").fill("950");
-      await page.getByRole("button", { name: "Set alert" }).click();
-      await page.getByText("Alert saved").waitFor();
-      await page.getByRole("link", { name: "Alerts" }).click();
-      await page.getByText("Watching").waitFor();
-      bitcoinUsd = 900;
-      await poll(page, "/api/alerts", (alerts) => alerts[0].active === false);
-      await poll(page, "/api/notifications", (notes) => notes.length === 1);
-      await page.reload();
-      await page.getByText("Triggered", { exact: true }).waitFor({ timeout: 8000 });
-      await page.getByRole("button", { name: "Notifications, 1 unread" }).click();
-      await page.getByText("Bitcoin price alert").waitFor();
-      assert.equal(emails.length, 1);
-      assert.equal(emails[0].to, "arjun@e2e.com");
-    });
-
-    await step("the account works on another device", async () => {
-      const other = await (await browser.newContext({ viewport: { width: 1360, height: 900 } })).newPage();
-      await other.goto(`${BASE}/alerts`);
-      await other.waitForURL("**/sign-in");
-      await other.getByLabel("Email").fill("arjun@e2e.com");
-      await other.getByLabel("Password").fill("password123");
-      await other.getByRole("button", { name: "Sign in" }).click();
-      await other.waitForURL("**/alerts");
-      await other.getByText("Triggered", { exact: true }).waitFor();
-      await other.getByRole("link", { name: "Watchlist" }).click();
-      await other.getByRole("rowheader", { name: /Bitcoin/ }).waitFor();
-      await other.context().close();
-    });
-
-    await step("wrong passwords are refused and sign out works", async () => {
-      await page.getByRole("button", { name: "Sign out Arjun" }).click();
-      await page.getByRole("link", { name: "Sign in" }).click();
-      await page.getByLabel("Email").fill("arjun@e2e.com");
-      await page.getByLabel("Password").fill("wrongpassword");
-      await page.getByRole("button", { name: "Sign in" }).click();
-      await page.getByText("Invalid email or password").waitFor();
+      await page.getByRole("heading", { name: "Crypto markets" }).waitFor();
+      for (const name of ["Sign in", "Alerts"]) {
+        assert.equal(await page.getByRole("link", { name, exact: true }).count(), 0);
+      }
+      assert.ok(await page.locator('meta[http-equiv="Content-Security-Policy"]').count());
     });
 
     await step("a failed API shows a friendly message, not a crash", async () => {
       failing = true;
       await page.goto(`${BASE}/coin/not-cached-coin`);
       await page.getByRole("heading", { name: /Market data is busy/ }).waitFor();
+      await page.getByLabel("Search coins").fill("solana");
+      await page.getByRole("status").getByText(/Market data is busy/).waitFor();
+      await page.evaluate(() => localStorage.clear());
+      await page.goto(BASE);
+      await page.getByText("Market data is unavailable").waitFor();
+      failing = false;
+      await page.getByRole("rowheader", { name: /Bitcoin/ }).waitFor({ timeout: 20000 });
+      failing = true;
+      await page.evaluate(() => localStorage.clear());
       failing = false;
     });
 
@@ -373,14 +286,10 @@ const run = async () => {
   } catch (error) {
     console.log("URL", page.url(), (await page.locator("body").innerText()).slice(0, 700).replace(/\n/g, " | "));
     console.log("ERRORS", errors.slice(0, 5));
-    console.log("ALERTS", await page.evaluate(async () => (await (await fetch("/api/alerts")).text()).slice(0, 400)));
-    console.log("NOTES", await page.evaluate(async () => (await (await fetch("/api/notifications")).text()).slice(0, 300)));
     throw error;
   } finally {
     await browser.close();
-    server.kill();
-    mock.close();
-    await mongo.stop();
+    process.kill(-server.pid);
   }
 };
 
