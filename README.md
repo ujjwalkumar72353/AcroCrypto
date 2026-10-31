@@ -1,35 +1,61 @@
 # AcroCrypto
 
-AcroCrypto is a web application designed to provide users with information about Bitcoin, including its current price, price changes over time, market ranking, and other relevant data. The application consists of a homepage and a Bitcoin description page.
-
-## Technologies Used
-- JavaScript
-- React.js
-- Chart.js
-- Material UI
-- External APIs
+A live crypto market tracker with charts, a watchlist and a personal portfolio. It runs on real market data, with a small Node.js server that caches API calls and keeps the app working through rate limits.
 
 ## Features
 
-### Homepage:
-- Landing page displaying information about various cryptocurrencies, including Bitcoin.
-- Provides the current price, 24-hour price change, and market cap of Bitcoin.
-- Utilizes React.js for dynamic rendering and Material UI for styling.
+- **Markets:** top 100 coins with sorting, filtering, gainers and losers, and 7-day sparklines.
+- **Global stats:** total market cap, volume, Bitcoin share and the Fear and Greed Index.
+- **Coin pages:** interactive price chart from 24 hours to 1 year, key stats, and a converter.
+- **Live prices:** streams ticks from Binance on coin pages, for coins with a USDT pair.
+- **Accounts:** sign up to keep your watchlist and portfolio on every device. Guest data moves into your account when you sign in.
+- **Price alerts:** set a target above or below the current price, and get an in-app notification and email.
+- **Watchlist and portfolio:** track coins and profit or loss, with or without an account.
+- **INR and USD**, with light and dark themes.
 
-### Bitcoin Description Page:
-- Contains detailed information about Bitcoin, including its price changes over time.
-- Displays price changes on a chart using Chart.js.
-- Includes historical data for Bitcoin's price changes on a yearly, monthly, and daily basis.
-- Shows Bitcoin's ranking in the cryptocurrency market.
+## How it works
 
-## Usage
-1. Clone the repository from GitHub.
-2. Install dependencies using npm or yarn.
-3. Run the application locally using npm start or yarn start.
-4. Access the application through the provided URL.
+The browser talks only to the Node.js server. The server validates each request, calls CoinGecko, and caches the answer for 1 to 30 minutes depending on the data. If CoinGecko is rate limited, it serves the last good data. Any API key stays on the server.
 
-## External APIs
-- Utilizes external APIs to fetch real-time data about Bitcoin's price and market ranking.
+A background worker checks active alerts every 10 minutes using one batched API call, and makes no call when there are no alerts. Each alert fires once, even if two checks overlap.
 
-## Contributors
-[Ujjwal Kumar]
+## Tech stack
+
+React 18, Vite, Tailwind CSS, TradingView Lightweight Charts, Node.js, Express, MongoDB, Mongoose, JWT cookies, Resend, Zod, Helmet, Playwright.
+
+## Run locally
+
+You need Node.js 20 or newer. No API key or MongoDB install is required, because local data is stored in `.data/`.
+
+```bash
+npm run setup
+npm run dev
+```
+
+Open http://localhost:5174.
+
+For steadier limits, create a free Demo key on [CoinGecko](https://www.coingecko.com/en/api/pricing), copy `.env.example` to `.env`, and set `COINGECKO_API_KEY`.
+
+To send alert emails, add `RESEND_API_KEY`, `EMAIL_FROM` and `APP_URL`. Without them, alerts appear in the app only.
+
+## Tests
+
+```bash
+npm test            # server, cache and failure tests
+npm run build       # needed once before the browser test
+npm run test:e2e    # full flow in Chrome against a fake market API
+```
+
+## Deploy
+
+Set `MONGO` and `JWT_SECRET`. Add the optional keys above if you use them. Alerts only run while the server is awake, so free hosts that sleep can delay them.
+
+```bash
+npm install --omit=dev
+npm run build
+npm start
+```
+
+## Data sources
+
+Market data from [CoinGecko](https://www.coingecko.com), live ticks from Binance, and sentiment from [Alternative.me](https://alternative.me/crypto/fear-and-greed-index/). This app is for information only and isn't financial advice.

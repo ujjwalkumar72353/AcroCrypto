@@ -1,0 +1,93 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --canvas: #f5f6f2;
+  --surface: #ffffff;
+  --raised: #eceee7;
+  --line: #dcdfd5;
+  --ink: #12150f;
+  --muted: #5a6054;
+  --brand: #2f7a12;
+  --on-brand: #ffffff;
+  --up: #15803d;
+  --down: #c81e1e;
+  color-scheme: light;
+}
+
+[data-theme="dark"] {
+  --canvas: #090b0a;
+  --surface: #111513;
+  --raised: #1a1f1c;
+  --line: #262d29;
+  --ink: #eef2ec;
+  --muted: #9aa49c;
+  --brand: #84f05c;
+  --on-brand: #0a0d0c;
+  --up: #4ade80;
+  --down: #f87171;
+  color-scheme: dark;
+}
+
+body {
+  background: var(--canvas);
+  color: var(--ink);
+  font-family: "Space Grotesk Variable", sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}
+
+@layer components {
+  .card {
+    @apply rounded-2xl border border-line bg-surface;
+  }
+  .num {
+    @apply font-mono tabular-nums;
+  }
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 h-10 px-4 rounded-xl font-medium cursor-pointer transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+  .btn-primary {
+    @apply btn bg-brand text-on-brand hover:opacity-90;
+  }
+  .btn-ghost {
+    @apply btn border border-line bg-surface hover:bg-raised;
+  }
+  .input {
+    @apply w-full h-10 rounded-xl border border-line bg-surface px-3 text-ink placeholder:text-muted outline-none focus:border-brand transition-colors;
+  }
+}
+
+.tick-up {
+  animation: tick-up 700ms ease-out;
+}
+
+.tick-down {
+  animation: tick-down 700ms ease-out;
+}
+
+@keyframes tick-up {
+  from {
+    color: var(--up);
+  }
+}
+
+@keyframes tick-down {
+  from {
+    color: var(--down);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
