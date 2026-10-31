@@ -1,6 +1,6 @@
 # AcroCrypto
 
-A live crypto market tracker with charts, a watchlist and a personal portfolio. It runs on real market data, with a small Node.js server that caches API calls and keeps the app working through rate limits.
+A live crypto market tracker with charts, a watchlist and a portfolio tracker. It's a static frontend that runs on real market data, with no backend or account.
 
 ## Features
 
@@ -8,53 +8,43 @@ A live crypto market tracker with charts, a watchlist and a personal portfolio. 
 - **Global stats:** total market cap, volume, Bitcoin share and the Fear and Greed Index.
 - **Coin pages:** interactive price chart from 24 hours to 1 year, key stats, and a converter.
 - **Live prices:** streams ticks from Binance on coin pages, for coins with a USDT pair.
-- **Accounts:** sign up to keep your watchlist and portfolio on every device. Guest data moves into your account when you sign in.
-- **Price alerts:** set a target above or below the current price, and get an in-app notification and email.
-- **Watchlist and portfolio:** track coins and profit or loss, with or without an account.
+- **Watchlist and portfolio:** track coins and profit or loss, saved in your browser.
 - **INR and USD**, with light and dark themes.
 
 ## How it works
 
-The browser talks only to the Node.js server. The server validates each request, calls CoinGecko, and caches the answer for 1 to 30 minutes depending on the data. If CoinGecko is rate limited, it serves the last good data. Any API key stays on the server.
-
-A background worker checks active alerts every 10 minutes using one batched API call, and makes no call when there are no alerts. Each alert fires once, even if two checks overlap.
+The browser calls public APIs directly. Responses are cached in the browser for 1 to 30 minutes, and if an API is rate limited the app shows the last good data.
 
 ## Tech stack
 
-React 18, Vite, Tailwind CSS, TradingView Lightweight Charts, Node.js, Express, MongoDB, Mongoose, JWT cookies, Resend, Zod, Helmet, Playwright.
+React 18, Vite, Tailwind CSS, TradingView Lightweight Charts, Playwright.
 
 ## Run locally
 
-You need Node.js 20 or newer. No API key or MongoDB install is required, because local data is stored in `.data/`.
+You need Node.js 20 or newer.
 
 ```bash
-npm run setup
+npm install
 npm run dev
 ```
 
 Open http://localhost:5174.
 
-For steadier limits, create a free Demo key on [CoinGecko](https://www.coingecko.com/en/api/pricing), copy `.env.example` to `.env`, and set `COINGECKO_API_KEY`.
-
-To send alert emails, add `RESEND_API_KEY`, `EMAIL_FROM` and `APP_URL`. Without them, alerts appear in the app only.
-
 ## Tests
 
 ```bash
-npm test            # server, cache and failure tests
+npm test            # cache and data tests
 npm run build       # needed once before the browser test
-npm run test:e2e    # full flow in Chrome against a fake market API
+npm run test:e2e    # full flow in Chrome against fake market data
 ```
 
-## Deploy
+## Deploy on Render
 
-Set `MONGO` and `JWT_SECRET`. Add the optional keys above if you use them. Alerts only run while the server is awake, so free hosts that sleep can delay them.
+Create a **Static Site** with these settings:
 
-```bash
-npm install --omit=dev
-npm run build
-npm start
-```
+- Build command: `npm install --include=dev && npm run build`
+- Publish directory: `dist`
+- Add a rewrite rule: source `/*`, destination `/index.html`
 
 ## Data sources
 
